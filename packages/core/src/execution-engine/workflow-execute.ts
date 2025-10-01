@@ -8,39 +8,6 @@ import { Container } from '@n8n/di';
 import * as assert from 'assert/strict';
 import { setMaxListeners } from 'events';
 import get from 'lodash/get';
-import type {
-	ExecutionBaseError,
-	ExecutionStatus,
-	GenericValue,
-	IConnection,
-	IDataObject,
-	IExecuteData,
-	INode,
-	INodeExecutionData,
-	IPairedItemData,
-	IPinData,
-	IRun,
-	IRunData,
-	ITaskData,
-	ITaskDataConnections,
-	ITaskMetadata,
-	NodeApiError,
-	NodeOperationError,
-	Workflow,
-	IRunExecutionData,
-	IWorkflowExecuteAdditionalData,
-	WorkflowExecuteMode,
-	CloseFunction,
-	IRunNodeResponse,
-	IWorkflowIssues,
-	INodeIssues,
-	INodeType,
-	ITaskStartedData,
-	AiAgentRequest,
-	IWorkflowExecutionDataProcess,
-	EngineRequest,
-	EngineResponse,
-} from 'n8n-workflow';
 import {
 	LoggerProxy as Logger,
 	NodeHelpers,
@@ -52,6 +19,38 @@ import {
 	UnexpectedError,
 	UserError,
 	OperationalError,
+	SPLIT_IN_BATCHES_NODE_TYPE,
+	type ExecutionBaseError,
+	type ExecutionStatus,
+	type GenericValue,
+	type IConnection,
+	type IDataObject,
+	type IExecuteData,
+	type INode,
+	type INodeExecutionData,
+	type IPairedItemData,
+	type IPinData,
+	type IRun,
+	type IRunData,
+	type ITaskData,
+	type ITaskDataConnections,
+	type ITaskMetadata,
+	type NodeApiError,
+	type NodeOperationError,
+	type Workflow,
+	type IRunExecutionData,
+	type IWorkflowExecuteAdditionalData,
+	type WorkflowExecuteMode,
+	type CloseFunction,
+	type IRunNodeResponse,
+	type IWorkflowIssues,
+	type INodeIssues,
+	type INodeType,
+	type ITaskStartedData,
+	type AiAgentRequest,
+	type IWorkflowExecutionDataProcess,
+	type EngineRequest,
+	type EngineResponse,
 } from 'n8n-workflow';
 import PCancelable from 'p-cancelable';
 
@@ -106,7 +105,7 @@ export class WorkflowExecute {
 	 * Executes the given workflow.
 	 *
 	 * @param {Workflow} workflow The workflow to execute
-	 * @param {INode[]} [startNode] Node to start execution from
+	 * @param {INode} [startNode] Node to start execution from
 	 * @param {string} [destinationNode] Node to stop execution at
 	 */
 	// IMPORTANT: Do not add "async" to this function, it will then convert the
@@ -1379,6 +1378,43 @@ export class WorkflowExecute {
 		if (workflowIssues !== null) {
 			throw new WorkflowHasIssuesError();
 		}
+
+		// Structural guard: SplitInBatches "done" output directly wired to its own input
+		this.assertNoDefiniteInfiniteLoops(workflow);
+	}
+
+	private assertNoDefiniteInfiniteLoops(workflow: Workflow): void {
+		for (const nodeName in workflow.nodes) {
+			const node = workflow.nodes[nodeName];
+			if (node.type !== SPLIT_IN_BATCHES_NODE_TYPE) continue;
+
+			const bySource = workflow.connectionsBySourceNode[node.name];
+			if (!bySource) continue;
+			const main = bySource[NodeConnectionTypes.Main];
+			if (!main) continue;
+
+			// Determine the index of the 'done' output from the node description so
+			// this check works across versions (v2 had ['loop','done'], v3+ ['done','loop']).
+			const nodeType = workflow.nodeTypes.getByNameAndVersion(node.type, node.typeVersion);
+			const outputNames = nodeType?.description?.outputNames;
+			const doneIndex = Array.isArray(outputNames)
+				? outputNames.findIndex((n) => n?.toLowerCase() === 'done')
+				: -1;
+
+			// If 'done' output does not exist (e.g. v1 single-output), skip this check.
+			if (doneIndex < 0) continue;
+
+			const doneOutput = main[doneIndex];
+			if (!doneOutput) continue;
+
+			for (const c of doneOutput) {
+				if (c.node === node.name) {
+					throw new OperationalError(
+						'Stopped execution: Loop Over Items (Split in Batches) node has its "done" output connected back to its own input, which causes an infinite loop. Disconnect the "done" output from this node\'s input.',
+					);
+				}
+			}
+		}
 	}
 
 	private setupExecution(): {
@@ -1455,6 +1491,7 @@ export class WorkflowExecute {
 	// eslint-disable-next-line @typescript-eslint/promise-function-async
 	processRunExecutionData(workflow: Workflow): PCancelable<IRun> {
 		Logger.debug('Workflow execution started', { workflowId: workflow.id });
+
 		const { startedAt, hooks } = this.setupExecution();
 		this.checkForWorkflowIssues(workflow);
 		this.handleWaitingState(workflow);
@@ -1601,8 +1638,10 @@ export class WorkflowExecute {
 					}
 
 					currentExecutionTry = `${executionNode.name}:${runIndex}`;
+
+					// Original loop detection: check for immediate consecutive execution
 					if (currentExecutionTry === lastExecutionTry) {
-						throw new ApplicationError(
+						throw new OperationalError(
 							'Stopped execution because it seems to be in an endless loop',
 						);
 					}

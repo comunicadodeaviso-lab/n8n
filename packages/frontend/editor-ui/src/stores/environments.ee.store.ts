@@ -4,32 +4,50 @@ import type { EnvironmentVariable } from '@/Interface';
 import * as environmentsApi from '@/api/environments.ee';
 import { useRootStore } from '@n8n/stores/useRootStore';
 import { ExpressionError } from 'n8n-workflow';
+import { useProjectsStore } from './projects.store';
 
 export const useEnvironmentsStore = defineStore('environments', () => {
 	const rootStore = useRootStore();
+	const projectStore = useProjectsStore();
 
-	const variables = ref<EnvironmentVariable[]>([]);
+	const allVariables = ref<EnvironmentVariable[]>([]);
+	const projectId = computed(() => projectStore.currentProject?.id);
+
+	// Variables that are global or filtered by the current project if set
+	const variables = computed(() =>
+		allVariables.value.filter(
+			(v) => !v.project || !projectId.value || v.project.id === projectId.value,
+		),
+	);
 
 	async function fetchAllVariables() {
 		const data = await environmentsApi.getVariables(rootStore.restApiContext);
 
-		variables.value = data;
+		allVariables.value = data;
 
 		return data;
 	}
 
-	async function createVariable(variable: Omit<EnvironmentVariable, 'id'>) {
+	async function createVariable(
+		variable: Omit<EnvironmentVariable, 'id' | 'project'> & { projectId?: string },
+	) {
 		const data = await environmentsApi.createVariable(rootStore.restApiContext, variable);
-
-		variables.value.unshift(data);
+		if (variable.projectId) {
+			data.project = projectStore.availableProjects?.find((p) => p.id === variable.projectId);
+		}
+		allVariables.value.unshift(data);
 
 		return data;
 	}
 
-	async function updateVariable(variable: EnvironmentVariable) {
+	async function updateVariable(
+		variable: Omit<EnvironmentVariable, 'project'> & { projectId?: string },
+	) {
 		const data = await environmentsApi.updateVariable(rootStore.restApiContext, variable);
-
-		variables.value = variables.value.map((v) => (v.id === data.id ? data : v));
+		if (variable.projectId) {
+			data.project = projectStore.availableProjects?.find((p) => p.id === variable.projectId);
+		}
+		allVariables.value = allVariables.value.map((v) => (v.id === data.id ? data : v));
 
 		return data;
 	}
@@ -39,7 +57,7 @@ export const useEnvironmentsStore = defineStore('environments', () => {
 			id: variable.id,
 		});
 
-		variables.value = variables.value.filter((v) => v.id !== variable.id);
+		allVariables.value = allVariables.value.filter((v) => v.id !== variable.id);
 
 		return data;
 	}

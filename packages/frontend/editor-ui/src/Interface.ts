@@ -302,6 +302,7 @@ export type VariableResource = BaseResource & {
 	resourceType: 'variable';
 	key?: string;
 	value?: string;
+	project?: { id: string; name: string };
 };
 
 export type CredentialsResource = BaseResource & {
@@ -1017,6 +1018,10 @@ export interface EnvironmentVariable {
 	id: string;
 	key: string;
 	value: string;
+	project?: {
+		id: string;
+		name: string | null;
+	};
 }
 
 export type ExecutionFilterMetadata = {

@@ -108,7 +108,7 @@ watch(() => props.runIndex, selectFirst, { immediate: true });
 					:data="executionTree"
 					:props="{ label: 'node' }"
 					default-expand-all
-					:indent="12"
+					:indent="32"
 					:expand-on-click-node="false"
 					data-test-id="lm-chat-logs-tree"
 					@node-click="onItemClick"
@@ -117,31 +117,29 @@ watch(() => props.runIndex, selectFirst, { immediate: true });
 						<div
 							:class="{
 								[$style.treeNode]: true,
-								[$style.isSelected]: isTreeNodeSelected(data),
+								[$style.selected]: isTreeNodeSelected(data),
+								[$style.hasToggle]: data.children.length > 0,
 							}"
 							:data-tree-depth="data.depth"
-							:style="{ '--item-depth': data.depth }"
+							:style="{ '--indent-depth': data.depth }"
 						>
+							<div :class="$style.background" />
+							<NodeIcon :node-type="getNodeType(data.node)!" :size="16" :class="$style.icon" />
+							<span :class="$style.name">
+								<N8nTooltip :disabled="!slim" placement="right">
+									<template #content>
+										{{ currentNode.label }}
+									</template>
+									<span v-if="!slim" v-text="currentNode.label" />
+								</N8nTooltip>
+							</span>
 							<button
 								v-if="data.children.length"
 								:class="$style.treeToggle"
 								@click="toggleTreeItem(currentNode)"
 							>
-								<N8nIcon :icon="currentNode.expanded ? 'chevron-down' : 'chevron-right'" />
+								<N8nIcon :icon="currentNode.expanded ? 'chevron-down' : 'chevron-up'" />
 							</button>
-							<N8nTooltip :disabled="!slim" placement="right">
-								<template #content>
-									{{ currentNode.label }}
-								</template>
-								<span :class="$style.leafLabel">
-									<NodeIcon
-										:node-type="getNodeType(data.node)!"
-										:size="17"
-										:class="$style.nodeIcon"
-									/>
-									<span v-if="!slim" v-text="currentNode.label" />
-								</span>
-							</N8nTooltip>
 						</div>
 					</template>
 				</ElTree>
@@ -180,6 +178,11 @@ watch(() => props.runIndex, selectFirst, { immediate: true });
 	padding: 0 var(--spacing-3xs);
 	margin: 0 calc(-1 * var(--spacing-3xs));
 	cursor: pointer;
+	color: var(--color-text-base);
+
+	&:hover {
+		color: var(--color-text-dark);
+	}
 }
 .leafLabel {
 	display: flex;
@@ -221,66 +224,98 @@ watch(() => props.runIndex, selectFirst, { immediate: true });
 	padding: 0 var(--spacing-xs);
 	display: flex;
 
-	:global(.el-tree > .el-tree-node) {
-		position: relative;
-		&:after {
-			content: '';
-			position: absolute;
-			top: 2rem;
-			bottom: 1.2rem;
-			left: 0.75rem;
-			width: 0.125rem;
-			background-color: var(--color-foreground-base);
-		}
+	:global(.el-tree) {
+		background-color: transparent;
 	}
+
 	:global(.el-tree-node__expand-icon) {
 		display: none;
 	}
-	:global(.el-tree) {
-		margin-left: calc(-1 * var(--spacing-xs));
-	}
+
 	:global(.el-tree-node__content) {
-		margin-left: var(--spacing-xs);
-	}
-}
-.nodeIcon {
-	padding: var(--spacing-3xs) var(--spacing-3xs);
-	border-radius: var(--border-radius-base);
-	margin-right: var(--spacing-4xs);
-}
-.isSelected {
-	background-color: var(--color-foreground-base);
-}
-.treeNode {
-	display: inline-flex;
-	border-radius: var(--border-radius-base);
-	align-items: center;
-	padding-right: var(--spacing-3xs);
-	margin: var(--spacing-4xs) 0;
-	font-size: var(--font-size-2xs);
-	color: var(--color-text-dark);
-	margin-bottom: var(--spacing-3xs);
-	cursor: pointer;
+		background-color: transparent !important;
+		position: relative;
+		height: auto;
 
-	&.isSelected {
-		font-weight: var(--font-weight-bold);
-	}
-	&:hover {
-		background-color: var(--color-foreground-base);
-	}
-	&[data-tree-depth='0'] {
-		margin-left: calc(-1 * var(--spacing-2xs));
+		&:hover {
+			background-color: transparent !important;
+		}
 	}
 
-	&:after {
+	:global(.el-tree-node) {
+		margin-bottom: var(--spacing-4xs);
+	}
+
+	:global(.el-tree-node__children .el-tree-node__content::before) {
 		content: '';
 		position: absolute;
-		margin: auto;
-		background-color: var(--color-foreground-base);
-		height: 0.125rem;
-		left: 0.75rem;
-		width: calc(var(--item-depth) * 0.625rem);
-		margin-top: var(--spacing-3xs);
+		left: var(--spacing-s);
+		bottom: var(--spacing-s);
+		border-bottom: 2px solid var(--color-canvas-dot);
+		border-left: 2px solid var(--color-canvas-dot);
+		width: var(--spacing-l);
+		height: var(--spacing-l);
+		border-radius: 0 0 0 var(--border-radius-large);
+		z-index: 0;
 	}
+
+	:global(.el-tree-node__children .el-tree-node:not(:last-child) .el-tree-node__content::after) {
+		content: '';
+		position: absolute;
+		left: var(--spacing-s);
+		top: 0;
+		border-left: 2px solid var(--color-canvas-dot);
+		height: 100%;
+		z-index: 0;
+	}
+}
+
+.treeNode {
+	display: flex;
+	align-items: center;
+	overflow: hidden;
+	position: relative;
+	z-index: 1;
+	cursor: pointer;
+	font-size: var(--font-size-2xs);
+	color: var(--color-text-dark);
+	padding: var(--spacing-2xs);
+	border-radius: var(--border-radius-base);
+	min-height: 32px;
+	width: 100%;
+	font-weight: var(--font-weight-bold);
+}
+
+.background {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+	border-radius: var(--border-radius-base);
+	z-index: -1;
+
+	.hasToggle & {
+		right: calc(-1 * (var(--spacing-3xs) * 2));
+		width: calc(100% + var(--spacing-3xs) * 2);
+	}
+
+	.selected & {
+		background-color: var(--color-background-base);
+	}
+
+	.treeNode:hover:not(.selected) & {
+		background-color: var(--color-background-medium);
+	}
+}
+
+.icon {
+	flex-shrink: 0;
+	margin-right: var(--spacing-2xs);
+}
+
+.name {
+	flex: 1;
+	min-width: 0;
 }
 </style>

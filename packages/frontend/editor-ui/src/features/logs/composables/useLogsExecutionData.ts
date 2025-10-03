@@ -134,6 +134,7 @@ export function useLogsExecutionData(isEnabled: ComputedRef<boolean>) {
 			() => workflowsStore.workflowExecutionData?.id,
 			() => workflowsStore.workflowExecutionData?.workflowData.id,
 			() => workflowsStore.workflowExecutionData?.status,
+			() => workflowsStore.workflowExecutionData?.stoppedAt,
 			() => workflowsStore.workflowExecutionResultDataLastUpdate,
 			() => workflowsStore.workflowExecutionStartedData,
 		],

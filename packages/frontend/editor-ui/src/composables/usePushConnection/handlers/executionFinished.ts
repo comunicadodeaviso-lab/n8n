@@ -192,7 +192,7 @@ export async function fetchExecutionData(
 			data: parse(executionResponse.data as unknown as string),
 			status: executionResponse.status,
 			startedAt: workflowsStore.workflowExecutionData?.startedAt as Date,
-			stoppedAt: new Date(),
+			stoppedAt: executionResponse.stoppedAt,
 		};
 	} catch {
 		return;
@@ -436,6 +436,7 @@ export function setRunExecutionData(
 		...workflowExecution,
 		status: execution.status,
 		id: execution.id,
+		startedAt: execution.startedAt,
 		stoppedAt: execution.stoppedAt,
 	});
 	workflowsStore.setWorkflowExecutionRunData(runExecutionData);

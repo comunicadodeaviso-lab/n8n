@@ -4,6 +4,7 @@
  */
 
 import type {
+	AddedNode,
 	AddedNodesAndConnections,
 	IExecutionResponse,
 	INodeUi,
@@ -2295,6 +2296,80 @@ export function useCanvasOperations() {
 		return true;
 	}
 
+	function replaceNode(
+		previousId: string,
+		newId: string,
+		{ trackHistory = true, trackBulk = true } = {},
+	) {
+		const previousNode = workflowsStore.getNodeById(previousId);
+		const newNode = workflowsStore.getNodeById(newId);
+
+		if (!previousNode || !newNode) return;
+
+		if (trackHistory && trackBulk) {
+			historyStore.startRecordingUndo();
+		}
+
+		const [x, y] = previousNode.position;
+		updateNodePosition(newId, { x, y }, { trackHistory });
+		replaceNodeConnections(previousId, newId, {
+			trackBulk: false,
+			trackHistory,
+		});
+		deleteNode(previousId, { trackHistory, trackBulk: false });
+		revalidateNodeInputConnections(newId);
+		revalidateNodeOutputConnections(newId);
+
+		uiStore.stateIsDirty = true;
+
+		if (trackHistory && trackBulk) {
+			historyStore.stopRecordingUndo();
+		}
+	}
+
+	async function addNodesAndConnections(
+		nodes: AddedNode[],
+		connections: CanvasConnectionCreateData[],
+		{
+			trackBulk = true,
+			trackHistory = true,
+			...options
+		}: AddNodesOptions & {
+			replaceNodeId?: string;
+			trackHistory?: boolean;
+			trackBulk?: boolean;
+		},
+	) {
+		if (trackHistory && trackBulk) {
+			historyStore.startRecordingUndo();
+		}
+
+		const addedNodes = await addNodes(nodes, {
+			...options,
+			trackHistory,
+			trackBulk: false,
+			telemetry: true,
+		});
+
+		await addConnections(connections, { trackHistory, trackBulk: false });
+
+		uiStore.resetLastInteractedWith();
+
+		if (addedNodes.length > 0 && options.replaceNodeId) {
+			const lastAddedNodeId = addedNodes[addedNodes.length - 1].id;
+			replaceNode(options.replaceNodeId, lastAddedNodeId, {
+				trackHistory,
+				trackBulk: false,
+			});
+		}
+
+		if (trackHistory && trackBulk) {
+			historyStore.stopRecordingUndo();
+		}
+
+		return { addedNodes };
+	}
+
 	function fitView() {
 		setTimeout(() => canvasEventBus.emit('fitView'));
 	}
@@ -2450,6 +2525,8 @@ export function useCanvasOperations() {
 		importTemplate,
 		replaceNodeConnections,
 		tryToOpenSubworkflowInNewTab,
+		replaceNode,
+		addNodesAndConnections,
 		fitView,
 		openWorkflowTemplate,
 		openWorkflowTemplateFromJSON,

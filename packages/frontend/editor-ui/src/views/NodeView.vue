@@ -78,6 +78,7 @@ import {
 	jsonParse,
 	EVALUATION_TRIGGER_NODE_TYPE,
 	EVALUATION_NODE_TYPE,
+	isTriggerNode,
 } from 'n8n-workflow';
 import type {
 	NodeConnectionType,
@@ -237,7 +238,6 @@ const {
 	cutNodes,
 	duplicateNodes,
 	revertDeleteNode,
-	addNodes,
 	revertAddNode,
 	createConnection,
 	revertCreateConnection,
@@ -247,7 +247,6 @@ const {
 	revalidateNodeOutputConnections,
 	setNodeActiveByName,
 	clearNodeActive,
-	addConnections,
 	tryToOpenSubworkflowInNewTab,
 	importWorkflowData,
 	fetchWorkflowDataFromUrl,
@@ -258,6 +257,7 @@ const {
 	editableWorkflowObject,
 	lastClickPosition,
 	startChat,
+	addNodesAndConnections,
 	fitView,
 	openWorkflowTemplate,
 	openWorkflowTemplateFromJSON,
@@ -1066,6 +1066,7 @@ function removeImportEventBindings() {
 /**
  * Node creator
  */
+const nodeCreatorReplaceTargetId = ref<string | undefined>(undefined);
 
 async function onAddNodesAndConnections(
 	{ nodes, connections }: AddedNodesAndConnections,
@@ -1076,13 +1077,14 @@ async function onAddNodesAndConnections(
 		return;
 	}
 
-	const addedNodes = await addNodes(nodes, {
-		dragAndDrop,
-		position,
-		viewport: viewportBoundaries.value,
-		trackHistory: true,
-		telemetry: true,
-	});
+	if (nodeCreatorReplaceTargetId.value !== undefined) {
+		uiStore.resetLastInteractedWith();
+
+		nodes = nodes.map((x) => ({
+			...x,
+			openDetail: false,
+		}));
+	}
 
 	const offsetIndex = editableWorkflow.value.nodes.length - nodes.length;
 	const mappedConnections: CanvasConnectionCreateData[] = connections.map(({ from, to }) => {
@@ -1116,12 +1118,17 @@ async function onAddNodesAndConnections(
 		};
 	});
 
-	await addConnections(mappedConnections);
-
-	uiStore.resetLastInteractedWith();
+	const { addedNodes } = await addNodesAndConnections(nodes, mappedConnections, {
+		dragAndDrop,
+		position,
+		viewport: viewportBoundaries.value,
+		telemetry: true,
+		replaceNodeId: nodeCreatorReplaceTargetId.value,
+	});
 
 	if (addedNodes.length > 0) {
-		selectNodes([addedNodes[addedNodes.length - 1].id]);
+		const lastAddedNodeId = addedNodes[addedNodes.length - 1].id;
+		selectNodes([lastAddedNodeId]);
 	}
 }
 
@@ -1148,8 +1155,9 @@ function onOpenSelectiveNodeCreator(
 function onToggleNodeCreator(options: ToggleNodeCreatorOptions) {
 	nodeCreatorStore.setNodeCreatorState(options);
 
-	if (!options.createNodeActive && !options.hasAddedNodes) {
-		uiStore.resetLastInteractedWith();
+	if (!options.createNodeActive) {
+		nodeCreatorReplaceTargetId.value = undefined;
+		if (!options.hasAddedNodes) uiStore.resetLastInteractedWith();
 	}
 }
 
@@ -1185,6 +1193,20 @@ function onClickConnectionAdd(connection: Connection) {
 		connection,
 		eventSource: NODE_CREATOR_OPEN_SOURCES.NODE_CONNECTION_ACTION,
 	});
+}
+
+function onClickReplaceNode(nodeId: string) {
+	const node = workflowsStore.getNodeById(nodeId);
+	if (!node) return;
+	const nodeType = nodeTypesStore.getNodeType(node.type);
+	if (!nodeType) return;
+
+	nodeCreatorReplaceTargetId.value = nodeId;
+	if (isTriggerNode(nodeType)) {
+		nodeCreatorStore.openNodeCreatorForTriggerNodes(NODE_CREATOR_OPEN_SOURCES.REPLACE_NODE_ACTION);
+	} else {
+		nodeCreatorStore.openNodeCreatorForRegularNodes(NODE_CREATOR_OPEN_SOURCES.REPLACE_NODE_ACTION);
+	}
 }
 
 /**
@@ -2020,6 +2042,7 @@ onBeforeUnmount(() => {
 			@duplicate:nodes="onDuplicateNodes"
 			@copy:nodes="onCopyNodes"
 			@cut:nodes="onCutNodes"
+			@replace:node="onClickReplaceNode"
 			@run:workflow="runEntireWorkflow('main')"
 			@save:workflow="onSaveWorkflow"
 			@create:workflow="onCreateWorkflow"

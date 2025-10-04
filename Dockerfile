@@ -1,6 +1,5 @@
 FROM node:20-bullseye
 
-# Dependências do sistema
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
@@ -12,22 +11,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copiar arquivos
 COPY . .
 
-# Ativar pnpm
 RUN corepack enable && corepack prepare pnpm@9.6.0 --activate
 
-# Debug: mostrar versões
-RUN node -v && pnpm -v
+# Instalar dependências sem rodar prepare/lefthook
+RUN pnpm install --frozen-lockfile --unsafe-perm --ignore-scripts
 
-# Instalar dependências
-RUN pnpm install --frozen-lockfile --unsafe-perm
-
-# Debug: listar pacotes
-RUN pnpm list --depth 1
-
-# Rodar build separado (pra ver erro exato)
+# Agora rodar build normal
 RUN pnpm run build
 
 EXPOSE 5678

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: n8n
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: n8n
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: N8N_BASIC_AUTH_ACTIVE
+        value: "true"
+      - key: N8N_BASIC_AUTH_USER
+        value: "admin"
+      - key: N8N_BASIC_AUTH_PASSWORD
+        value: "senha123"
+      - key: N8N_ENCRYPTION_KEY
+        value: "chave_segura_aqui"
